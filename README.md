@@ -318,10 +318,4 @@ git push origin main
 - [Tailwind CSS](https://tailwindcss.com/)
 - [TypeScript](https://www.typescriptlang.org/)
 
-## Licença
 
-Privado - NEXLab
-
-## Suporte
-
-Para dúvidas ou problemas, abra uma issue ou entre em contato com o time de desenvolvimento.
