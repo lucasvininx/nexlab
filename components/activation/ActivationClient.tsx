@@ -30,14 +30,76 @@ export default function ActivationClient() {
   const streamRef = useRef<MediaStream | null>(null)
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Em alguns celulares, "environment" escolhe lente ultra-wide (pior para foco).
+  // Aqui tentamos priorizar a camera traseira principal.
+  const getPreferredRearCameraDeviceId = useCallback(async () => {
+    if (cameraFacing !== 'environment') return null
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const videoInputs = devices.filter((d) => d.kind === 'videoinput')
+      if (!videoInputs.length) return null
+      if (!videoInputs.some((d) => d.label.trim().length > 0)) return null
+
+      const rearRegex = /(back|rear|traseira|environment)/i
+      const avoidRegex = /(ultra|macro|0\.5x|0,5x|0\.5|0,5)/i
+
+      const ranked = videoInputs
+        .map((device) => {
+          const label = device.label || ''
+          let score = 0
+          if (rearRegex.test(label)) score += 4
+          if (avoidRegex.test(label)) score -= 3
+          return { deviceId: device.deviceId, score }
+        })
+        .sort((a, b) => b.score - a.score)
+
+      return ranked[0]?.deviceId ?? null
+    } catch {
+      return null
+    }
+  }, [cameraFacing])
+
+  // Tenta ativar autofoco continuo quando o dispositivo suporta essa constraint
+  const applyBestFocus = useCallback(async (stream: MediaStream) => {
+    const [track] = stream.getVideoTracks()
+    if (!track) return
+
+    try {
+      const capabilities = track.getCapabilities?.() as MediaTrackCapabilities & {
+        focusMode?: string[]
+      }
+
+      if (capabilities?.focusMode?.includes('continuous')) {
+        await track.applyConstraints({
+          advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet],
+        })
+      }
+    } catch {
+      // Ignora erro em browsers/dispositivos sem suporte completo a focusMode
+    }
+  }, [])
+
   // Start camera stream
   const startCamera = useCallback(async () => {
     try {
+      const preferredRearDeviceId = await getPreferredRearCameraDeviceId()
+      const videoConstraints: MediaTrackConstraints = {
+        facingMode: { ideal: cameraFacing },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      }
+
+      if (preferredRearDeviceId) {
+        videoConstraints.deviceId = { exact: preferredRearDeviceId }
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: cameraFacing },
+        video: videoConstraints,
         audio: false,
       })
       streamRef.current = stream
+      await applyBestFocus(stream)
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         await videoRef.current.play()
@@ -45,7 +107,7 @@ export default function ActivationClient() {
     } catch {
       setError('Camera access denied. Please allow camera permissions.')
     }
-  }, [cameraFacing])
+  }, [cameraFacing, applyBestFocus, getPreferredRearCameraDeviceId])
 
   // Para o stream de camera e limpa todos os tracks
   const stopCamera = useCallback(() => {
