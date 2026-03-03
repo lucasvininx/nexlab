@@ -1,13 +1,26 @@
+// Pagina de login - /login
+// Formulario para autenticacao de usuarios (promoter ou admin)
+// Apos login bem-sucedido, middleware redireciona para:
+// - /activation se eh promoter (is_admin = false)
+// - /admin se eh admin (is_admin = true)
+
 'use client'
 
 import { useState } from 'react'
 import Image from 'next/image'
 import { loginAction } from '@/app/actions/auth'
 
+// Componente cliente de pagina de login
+// Gerencia submissao de formulario e exibicao de erros
 export default function LoginPage() {
+  // Armazena mensagem de erro de autenticacao
   const [error, setError] = useState<string | null>(null)
+  
+  // Flag indicando se esta processando login
   const [loading, setLoading] = useState(false)
 
+  // Handler para submissao de formulario
+  // Executa server action loginAction que autentica contra Supabase
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)

@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import NextImage from 'next/image'
 import { uploadPhotoAction } from '@/app/actions/photos'
-import { logoutAction } from '@/app/actions/auth'
 import QRCode from 'qrcode'
 
 type Screen =
@@ -191,15 +190,6 @@ export default function ActivationClient() {
 
   return (
     <div className="w-full h-full relative overflow-hidden select-none" style={{ background: 'var(--kiosk-bg)' }}>
-      {/* Logout button - top right */}
-      <button
-        onClick={() => logoutAction()}
-        className="absolute top-4 right-4 z-10 px-4 py-2 bg-black text-white text-sm font-semibold rounded hover:bg-black/80 active:scale-95 transition-all"
-        aria-label="Logout"
-      >
-        Logout
-      </button>
-
       {/* Hidden canvas for compositing */}
       <canvas ref={canvasRef} className="hidden" />
 
