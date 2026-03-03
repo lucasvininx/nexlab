@@ -14,6 +14,74 @@ type Screen =
   | 'review'
   | 'qr'
 
+const CANVAS_WIDTH = 1080
+const CANVAS_HEIGHT = 1920
+const FRAME_TOP_HEIGHT = 228
+const FRAME_BOTTOM_HEIGHT = 136
+const FRAME_BG = '#d9d9db'
+const FRAME_TEXT_COLOR = '#3d3f44'
+const FRAME_MESSAGE = 'we make tech simple_'
+const FRAME_TOP_PERCENT = (FRAME_TOP_HEIGHT / CANVAS_HEIGHT) * 100
+const FRAME_BOTTOM_PERCENT = (FRAME_BOTTOM_HEIGHT / CANVAS_HEIGHT) * 100
+
+function drawCoverImage(
+  ctx: CanvasRenderingContext2D,
+  source: CanvasImageSource,
+  sourceWidth: number,
+  sourceHeight: number,
+  targetX: number,
+  targetY: number,
+  targetWidth: number,
+  targetHeight: number,
+) {
+  const scale = Math.max(targetWidth / sourceWidth, targetHeight / sourceHeight)
+  const sourceDrawWidth = targetWidth / scale
+  const sourceDrawHeight = targetHeight / scale
+  const sourceX = (sourceWidth - sourceDrawWidth) / 2
+  const sourceY = (sourceHeight - sourceDrawHeight) / 2
+
+  ctx.drawImage(
+    source,
+    sourceX,
+    sourceY,
+    sourceDrawWidth,
+    sourceDrawHeight,
+    targetX,
+    targetY,
+    targetWidth,
+    targetHeight,
+  )
+}
+
+function drawFrame(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  logo: HTMLImageElement | null,
+) {
+  ctx.fillStyle = FRAME_BG
+  ctx.fillRect(0, 0, width, FRAME_TOP_HEIGHT)
+  ctx.fillRect(0, height - FRAME_BOTTOM_HEIGHT, width, FRAME_BOTTOM_HEIGHT)
+
+  if (logo) {
+    const logoHeight = Math.min(118, FRAME_TOP_HEIGHT - 54)
+    const logoWidth = (logo.width / logo.height) * logoHeight
+    const logoX = 46
+    const logoY = (FRAME_TOP_HEIGHT - logoHeight) / 2
+    ctx.drawImage(logo, logoX, logoY, logoWidth, logoHeight)
+  }
+
+  ctx.fillStyle = FRAME_TEXT_COLOR
+  ctx.textBaseline = 'middle'
+  ctx.font = '600 66px Arial, sans-serif'
+  ctx.textAlign = 'right'
+  ctx.fillText(FRAME_MESSAGE, width - 48, FRAME_TOP_HEIGHT / 2 + 2)
+
+  ctx.font = '600 72px Arial, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.fillText(FRAME_MESSAGE, width / 2, height - FRAME_BOTTOM_HEIGHT / 2 + 4)
+}
+
 export default function ActivationClient() {
   const [screen, setScreen] = useState<Screen>('idle')
   const [countdown, setCountdown] = useState(3)
@@ -29,6 +97,7 @@ export default function ActivationClient() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const frameLogoRef = useRef<HTMLImageElement | null>(null)
 
   // Em alguns celulares, "environment" escolhe lente ultra-wide (pior para foco).
   // Aqui tentamos priorizar a camera traseira principal.
@@ -138,24 +207,26 @@ export default function ActivationClient() {
     const canvas = canvasRef.current
     if (!video || !canvas) return
 
-    const W = 1080
-    const H = 1920
+    const W = CANVAS_WIDTH
+    const H = CANVAS_HEIGHT
     canvas.width = W
     canvas.height = H
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Draw video frame covering the canvas (cover crop)
+    ctx.clearRect(0, 0, W, H)
+
+    // Foto ocupa a area central entre as faixas da moldura
+    const photoAreaY = FRAME_TOP_HEIGHT
+    const photoAreaHeight = H - FRAME_TOP_HEIGHT - FRAME_BOTTOM_HEIGHT
+
     const vw = video.videoWidth
     const vh = video.videoHeight
-    const scale = Math.max(W / vw, H / vh)
-    const sw = W / scale
-    const sh = H / scale
-    const sx = (vw - sw) / 2
-    const sy = (vh - sh) / 2
-    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, W, H)
+    if (!vw || !vh) return
+    drawCoverImage(ctx, video, vw, vh, 0, photoAreaY, W, photoAreaHeight)
+    drawFrame(ctx, W, H, frameLogoRef.current)
 
-    // Salva foto imediatamente sem overlay
+    // Salva foto ja com moldura aplicada
     canvas.toBlob(
       (blob) => {
         if (!blob) return
@@ -190,6 +261,18 @@ export default function ActivationClient() {
       if (screen !== 'processing') stopCamera()
     }
   }, [screen, startCamera, stopCamera])
+
+  // Preload do logo para desenhar na moldura final da foto
+  useEffect(() => {
+    const logo = new window.Image()
+    logo.src = '/nex-logo.png'
+    logo.onload = () => {
+      frameLogoRef.current = logo
+    }
+    return () => {
+      frameLogoRef.current = null
+    }
+  }, [])
 
   // Auto-reset from QR screen after 15s
   useEffect(() => {
@@ -297,12 +380,45 @@ export default function ActivationClient() {
             muted
             className="w-full h-full object-cover"
           />
+          <div className="absolute inset-0 z-10 pointer-events-none">
+            <div
+              className="absolute inset-x-0 top-0 bg-[#d9d9db] px-8 md:px-10 flex items-center justify-between"
+              style={{ height: `${FRAME_TOP_PERCENT}%` }}
+            >
+              <NextImage
+                src="/nex-logo.png"
+                alt=""
+                width={240}
+                height={96}
+                className="h-[50%] w-auto object-contain"
+                aria-hidden
+              />
+              <p
+                className="text-[#3d3f44] font-semibold tracking-tight lowercase"
+                style={{ fontSize: 'clamp(1.2rem, 3.2vw, 2.8rem)' }}
+              >
+                {FRAME_MESSAGE}
+              </p>
+            </div>
+            <div
+              className="absolute inset-x-0 bottom-0 bg-[#d9d9db] flex items-center justify-center"
+              style={{ height: `${FRAME_BOTTOM_PERCENT}%` }}
+            >
+              <p
+                className="text-[#3d3f44] font-semibold tracking-tight lowercase"
+                style={{ fontSize: 'clamp(1.5rem, 3.8vw, 3rem)' }}
+              >
+                {FRAME_MESSAGE}
+              </p>
+            </div>
+          </div>
           
           {/* Botão trocar câmera - topo esquerdo (durante camera) */}
           {screen === 'camera' && (
             <button
               onClick={toggleCamera}
-              className="absolute top-4 left-4 z-20 px-3 py-2 bg-black/70 text-white text-xs font-semibold rounded hover:bg-black active:scale-95 transition-all flex items-center gap-2"
+              className="absolute left-4 z-20 px-3 py-2 bg-black/70 text-white text-xs font-semibold rounded hover:bg-black active:scale-95 transition-all flex items-center gap-2"
+              style={{ top: `calc(${FRAME_TOP_PERCENT}% + 1rem)` }}
               aria-label="Toggle camera"
               title={cameraFacing === 'user' ? 'Trocar para câmera traseira' : 'Trocar para câmera frontal'}
             >
@@ -316,7 +432,10 @@ export default function ActivationClient() {
 
           {/* Capture button (only in camera mode) */}
           {screen === 'camera' && (
-            <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-5">
+            <div
+              className="absolute left-0 right-0 z-20 flex flex-col items-center gap-5"
+              style={{ bottom: `calc(${FRAME_BOTTOM_PERCENT}% + 1.5rem)` }}
+            >
               <button
                 onClick={triggerCountdown}
                 className="w-24 h-24 rounded-full bg-white border-4 border-foreground active:scale-90 transition-transform shadow-xl"
@@ -335,7 +454,7 @@ export default function ActivationClient() {
 
           {/* Countdown overlay */}
           {screen === 'countdown' && countdown > 0 && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40">
               <span
                 key={countdown}
                 className="text-[18rem] font-black text-white leading-none"
@@ -366,7 +485,7 @@ export default function ActivationClient() {
             <img
               src={finalImageUrl}
               alt="Your photo preview"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain bg-black"
             />
           </div>
           {error && (
