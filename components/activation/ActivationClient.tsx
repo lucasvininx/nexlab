@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import NextImage from 'next/image'
 import { uploadPhotoAction } from '@/app/actions/photos'
+import { logoutAction } from '@/app/actions/auth'
 import QRCode from 'qrcode'
 
 type Screen =
@@ -22,6 +23,7 @@ export default function ActivationClient() {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user')
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -32,7 +34,7 @@ export default function ActivationClient() {
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1080 }, height: { ideal: 1920 } },
+        video: { facingMode: cameraFacing, width: { ideal: 1080 }, height: { ideal: 1920 } },
         audio: false,
       })
       streamRef.current = stream
@@ -43,15 +45,21 @@ export default function ActivationClient() {
     } catch {
       setError('Camera access denied. Please allow camera permissions.')
     }
-  }, [])
+  }, [cameraFacing])
 
-  // Stop camera stream
+  // Para o stream de camera e limpa todos os tracks
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop())
       streamRef.current = null
     }
   }, [])
+
+  // Alterna entre camera frontal e traseira
+  const toggleCamera = useCallback(async () => {
+    stopCamera()
+    setCameraFacing((prev) => (prev === 'user' ? 'environment' : 'user'))
+  }, [stopCamera])
 
   function goToCamera() {
     setError(null)
@@ -85,39 +93,19 @@ export default function ActivationClient() {
     const sy = (vh - sh) / 2
     ctx.drawImage(video, sx, sy, sw, sh, 0, 0, W, H)
 
-    // Load and composite frame overlay
-    const frame = new window.Image()
-    frame.crossOrigin = 'anonymous'
-    frame.src = '/frame-overlay.png'
-    frame.onload = () => {
-      ctx.drawImage(frame, 0, 0, W, H)
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) return
-          const url = URL.createObjectURL(blob)
-          setFinalImageUrl(url)
-          setFinalImageBlob(blob)
-          setScreen('review')
-          stopCamera()
-        },
-        'image/jpeg',
-        0.92,
-      )
-    }
-    frame.onerror = () => {
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) return
-          const url = URL.createObjectURL(blob)
-          setFinalImageUrl(url)
-          setFinalImageBlob(blob)
-          setScreen('review')
-          stopCamera()
-        },
-        'image/jpeg',
-        0.92,
-      )
-    }
+    // Salva foto imediatamente sem overlay
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return
+        const url = URL.createObjectURL(blob)
+        setFinalImageUrl(url)
+        setFinalImageBlob(blob)
+        setScreen('review')
+        stopCamera()
+      },
+      'image/jpeg',
+      0.92,
+    )
   }, [stopCamera])
 
   // Handle countdown
@@ -190,6 +178,15 @@ export default function ActivationClient() {
 
   return (
     <div className="w-full h-full relative overflow-hidden select-none" style={{ background: 'var(--kiosk-bg)' }}>
+      {/* Botão Logout - topo direito */}
+      <button
+        onClick={() => logoutAction()}
+        className="absolute top-4 right-4 z-20 px-4 py-2 bg-black text-white text-sm font-semibold rounded hover:bg-black/80 active:scale-95 transition-all"
+        aria-label="Logout"
+      >
+        Logout
+      </button>
+
       {/* Hidden canvas for compositing */}
       <canvas ref={canvasRef} className="hidden" />
 
@@ -239,6 +236,19 @@ export default function ActivationClient() {
             className="w-full h-full object-cover"
             style={{ transform: 'scaleX(-1)' }}
           />
+          
+          {/* Botão trocar câmera - topo esquerdo (durante camera) */}
+          {screen === 'camera' && (
+            <button
+              onClick={toggleCamera}
+              className="absolute top-4 left-4 z-20 px-3 py-2 bg-black/70 text-white text-xs font-semibold rounded hover:bg-black active:scale-95 transition-all"
+              aria-label="Toggle camera"
+              title={cameraFacing === 'user' ? 'Trocar para câmera traseira' : 'Trocar para câmera frontal'}
+            >
+              {cameraFacing === 'user' ? '📷 Traseira' : '🔄 Frontal'}
+            </button>
+          )}
+
           {/* Capture button (only in camera mode) */}
           {screen === 'camera' && (
             <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-5">
