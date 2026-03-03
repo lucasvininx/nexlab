@@ -34,7 +34,7 @@ export default function ActivationClient() {
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: cameraFacing, width: { ideal: 1080 }, height: { ideal: 1920 } },
+        video: { facingMode: cameraFacing },
         audio: false,
       })
       streamRef.current = stream
@@ -234,7 +234,6 @@ export default function ActivationClient() {
             playsInline
             muted
             className="w-full h-full object-cover"
-            style={{ transform: 'scaleX(-1)' }}
           />
           
           {/* Botão trocar câmera - topo esquerdo (durante camera) */}
