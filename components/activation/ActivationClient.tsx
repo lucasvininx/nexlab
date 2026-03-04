@@ -12,6 +12,8 @@ type Screen =
   | 'countdown'
   | 'processing'
   | 'review'
+  | 'download-ready'
+  | 'thanks'
   | 'qr'
 
 const CANVAS_WIDTH = 1080
@@ -23,6 +25,7 @@ const FRAME_TEXT_COLOR = '#3d3f44'
 const FRAME_MESSAGE = 'we make tech simple_'
 const FRAME_TOP_PERCENT = (FRAME_TOP_HEIGHT / CANVAS_HEIGHT) * 100
 const FRAME_BOTTOM_PERCENT = (FRAME_BOTTOM_HEIGHT / CANVAS_HEIGHT) * 100
+const THANK_YOU_DELAY_MS = 1400
 
 function drawCoverImage(
   ctx: CanvasRenderingContext2D,
@@ -96,7 +99,7 @@ export default function ActivationClient() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const thankYouTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const frameLogoRef = useRef<HTMLImageElement | null>(null)
 
   // Em alguns celulares, "environment" escolhe lente ultra-wide (pior para foco).
@@ -274,18 +277,14 @@ export default function ActivationClient() {
     }
   }, [])
 
-  // Auto-reset from QR screen after 15s
   useEffect(() => {
-    if (screen === 'qr') {
-      resetTimerRef.current = setTimeout(() => resetToIdle(), 15000)
-      return () => {
-        if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
-      }
+    return () => {
+      if (thankYouTimerRef.current) clearTimeout(thankYouTimerRef.current)
     }
-  }, [screen])
+  }, [])
 
   function resetToIdle() {
-    if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
+    if (thankYouTimerRef.current) clearTimeout(thankYouTimerRef.current)
     setScreen('idle')
     setFinalImageUrl(null)
     setFinalImageBlob(null)
@@ -293,6 +292,14 @@ export default function ActivationClient() {
     setQrDataUrl(null)
     setError(null)
     setUploading(false)
+  }
+
+  function finalizeFlow() {
+    if (thankYouTimerRef.current) clearTimeout(thankYouTimerRef.current)
+    setScreen('thanks')
+    thankYouTimerRef.current = setTimeout(() => {
+      setScreen('qr')
+    }, THANK_YOU_DELAY_MS)
   }
 
   async function approvePhoto() {
@@ -318,19 +325,21 @@ export default function ActivationClient() {
     })
     setQrDataUrl(qr)
     setUploading(false)
-    setScreen('qr')
+    setScreen('download-ready')
   }
 
   return (
     <div className="w-full h-full relative overflow-hidden select-none" style={{ background: 'var(--kiosk-bg)' }}>
       {/* Botão Logout - topo direito */}
-      <button
-        onClick={() => logoutAction()}
-        className="absolute top-4 right-4 z-20 px-4 py-2 bg-black text-white text-sm font-semibold rounded hover:bg-black/80 active:scale-95 transition-all"
-        aria-label="Logout"
-      >
-        Logout
-      </button>
+      {screen === 'idle' && (
+        <button
+          onClick={() => logoutAction()}
+          className="absolute top-4 right-4 z-20 px-4 py-2 bg-black text-white text-sm font-semibold rounded hover:bg-black/80 active:scale-95 transition-all"
+          aria-label="Logout"
+        >
+          Logout
+        </button>
+      )}
 
       {/* Hidden canvas for compositing */}
       <canvas ref={canvasRef} className="hidden" />
@@ -498,58 +507,86 @@ export default function ActivationClient() {
               onClick={goToCamera}
               className="flex-1 border-r border-border text-foreground font-bold text-xl py-6 active:scale-95 transition-transform bg-card hover:bg-secondary uppercase tracking-widest rounded-none"
             >
-              Retake
+              Refazer
             </button>
             <button
               onClick={approvePhoto}
               className="flex-1 bg-primary text-primary-foreground font-bold text-xl py-6 active:scale-95 transition-transform hover:bg-foreground/80 uppercase tracking-widest rounded-none"
             >
-              Approve
+              Continuar
             </button>
           </div>
         </div>
       )}
 
+      {/* --- DOWNLOAD READY SCREEN --- */}
+      {(screen === 'download-ready' || screen === 'thanks') && finalImageUrl && qrDataUrl && (
+        <div className="w-full h-full flex flex-col justify-between px-6 py-6 bg-[radial-gradient(circle_at_top,_#f4f4f4,_#e6e6e6_58%,_#d9d9d9)]">
+          <div className="flex-1 relative border border-[#a3a3a3] bg-[#ededed] overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={finalImageUrl}
+              alt="Foto pronta para download"
+              className="w-full h-full object-contain bg-[#e9e9e9]"
+            />
+
+            <div className="absolute right-4 bottom-10 rounded-md border border-[#b0b0b0] bg-[#dddddd] p-2 shadow-sm">
+              <p className="text-[10px] font-semibold text-[#3f3f3f] mb-2 px-1">Fazer download</p>
+              <div className="rounded border border-[#a6a6a6] bg-white p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={qrDataUrl} alt="QR code de download" className="w-20 h-20" />
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={finalizeFlow}
+            disabled={screen === 'thanks'}
+            className="mt-6 w-full bg-[#666666] text-white font-bold text-4xl py-5 active:scale-95 transition-transform disabled:opacity-75 uppercase tracking-wide rounded-none"
+          >
+            Finalizar
+          </button>
+
+          {screen === 'thanks' && (
+            <div className="absolute inset-0 z-40 bg-black/35 flex items-center justify-center px-7">
+              <div className="w-full rounded-2xl bg-[#f4f4f4] py-10 px-6 text-center shadow-2xl">
+                <h3 className="text-6xl font-black text-[#555555] mb-4">Obrigado!</h3>
+                <p className="text-[#666666] text-3xl leading-tight">Sua foto esta pronta para download.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* --- QR SCREEN --- */}
       {screen === 'qr' && qrDataUrl && (
-        <div className="w-full h-full flex flex-col items-center justify-between py-16 px-10">
-          {/* Logo top */}
+        <div className="w-full h-full flex flex-col items-center justify-between px-8 py-10 bg-[radial-gradient(circle_at_top,_#f5f5f5,_#ececec_60%,_#dddddd)]">
           <NextImage
             src="/nex-logo.png"
             alt="NEX"
-            width={140}
-            height={70}
+            width={170}
+            height={84}
             className="object-contain"
           />
 
-          <div className="flex flex-col items-center gap-8">
-            <h2 className="text-4xl font-black text-foreground text-center text-balance tracking-tight">
-              Scan to Download
-            </h2>
-            {/* QR Code */}
-            <div className="bg-white p-5 border border-border">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qrDataUrl} alt="QR code to download your photo" className="w-64 h-64" />
-            </div>
-            <p className="text-muted-foreground text-lg text-center text-balance">
-              Scan with your phone to get your free photo.
+          <div className="flex flex-col items-center gap-4 text-center px-4">
+            <h2 className="text-7xl font-black text-[#555555] tracking-tight">Obrigado!</h2>
+            <p className="text-[#707070] text-2xl leading-snug">
+              Escaneie o QR code para baixar sua foto.
             </p>
           </div>
 
-          {/* Auto-reset */}
-          <div className="w-full flex flex-col items-center gap-4">
-            <div className="w-full h-1 bg-border overflow-hidden">
-              <div
-                className="h-full bg-foreground"
-                style={{ animation: 'shrink 15s linear forwards' }}
-              />
-            </div>
-            <p className="text-muted-foreground text-sm">Resetting in 15 seconds...</p>
+          <div className="rounded-2xl border border-[#8f8f8f] bg-[#ececec] p-6 shadow-sm">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qrDataUrl} alt="QR code para download da foto" className="w-72 h-72" />
+          </div>
+
+          <div className="w-full">
             <button
               onClick={resetToIdle}
-              className="text-muted-foreground text-base underline underline-offset-4"
+              className="w-full bg-[#666666] text-white font-bold text-4xl py-5 active:scale-95 transition-transform uppercase tracking-wide rounded-none"
             >
-              Reset now
+              Finalizar
             </button>
           </div>
         </div>
@@ -560,10 +597,6 @@ export default function ActivationClient() {
           0% { transform: scale(1.4); opacity: 0.6; }
           60% { transform: scale(1); opacity: 1; }
           100% { transform: scale(0.95); opacity: 0.9; }
-        }
-        @keyframes shrink {
-          from { width: 100%; }
-          to { width: 0%; }
         }
       `}</style>
     </div>
